@@ -194,6 +194,8 @@ void *listenInput(void *args) {
 	memset(&act, '\0', sizeof(act));
 	sigaction(SIGTERM, &act, NULL) ;
 	
+
+
     while(1) {
         switch(getch()) {
             case KEY_UP: if (host) padRY--;
@@ -241,6 +243,7 @@ void * getMessage(struct sockaddr_in * sin) {
 // Send Handler
 void sendMessage(struct sockaddr_in * sinPtr, void * toSend, int msgSiz) {
 
+
 	sin.sin_family = AF_INET ;
 
 	int retKey;
@@ -281,6 +284,9 @@ int getSock(char * port) {
 	freeaddrinfo(results);
 	return sockfd;
 }
+
+
+
 
 void connectToHost(char * hostName) {
 
@@ -480,6 +486,7 @@ int main(int argc, char *argv[]) {
     delwin(popup);
     endwin();
 
+	// KIll Threads
 	std::system("clear");
 	pthread_kill(pth, SIGTERM);
 	pthread_kill(pth0, SIGTERM);
