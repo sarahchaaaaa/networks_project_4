@@ -166,7 +166,7 @@ void tock() {
 			scoreR = 0;
 			scoreL = 0;
 			char buff [30];
-			sprintf(buff, "ROUND %d WON -->", roundCount);
+			sprintf(buff, "ROUND %d WIN -->", roundCount);
 			roundCount++;
 			countdown(buff);
 		}
@@ -180,7 +180,7 @@ void tock() {
 			scoreR = 0;
 			scoreL = 0;
 			char buff [30];
-			sprintf(buff, "<-- ROUND %d WON", roundCount);
+			sprintf(buff, "ROUND %d WIN <--", roundCount);
 			roundCount++;
 			countdown(buff);
 		}
@@ -268,18 +268,18 @@ int getSock(char * port) {
 	struct addrinfo * results;
 	int status;
 	if( (status = getaddrinfo(NULL, port, &hints, &results)) != 0 ) {
-		std::cerr << "Failure on getaddrinfo(): " << gai_strerror(status) << std::endl;
+		std::cerr << "Failure to get addr info: " << gai_strerror(status) << std::endl;
 		std::exit(1);
 	}
 
 	/* socket and bind */
 	if ((sockfd = socket(results->ai_family, results->ai_socktype, 0)) < 0) {
-		std::cerr << "Error on socket(): " << strerror(errno) << std::endl;
+		std::cerr << "Error creating socket: " << strerror(errno) << std::endl;
 	}
 
 	int bindResult;
 	if ((bindResult = bind(sockfd, results->ai_addr, results->ai_addrlen)) == -1) {
-		std::cerr << "Error on bind(): " << strerror(errno) << std::endl;
+		std::cerr << "Error creating bind: " << strerror(errno) << std::endl;
 		close(sockfd);
 		std::exit(1);
 	}
@@ -372,11 +372,14 @@ int main(int argc, char *argv[]) {
 	endGame = false;
 	char * hostPort;
 	char * hostName;
-	//struct opponentInfo oppInfo;
 	int refresh;
 	int maxRounds;
 
 	signal(SIGINT, handler);
+	if (argc != 3){
+        fprintf(stderr, "Usage (for host): %s --host <PORT> \nUsage (for guest): %s <HOSTNAME> <PORT>\n", argv[0], argv[0]);
+        exit(1);
+    }
 
 	hostPort = argv[2];
 	if (!strcmp(argv[1], "--host") ){
@@ -469,17 +472,20 @@ int main(int argc, char *argv[]) {
         usleep(toSleep); // Sleep exactly as much as is necessary
     }
  
-	// Send GAME OVER Indicator
-	char message [20] = "GAME OVER"; 
-    int h = 4;
-    int w = strlen(message) + 4;
-    WINDOW *popup = newwin(h, w, (LINES - h) / 2, (COLS - w) / 2);
+	/* Show Game Ended message */
+	char messg [25] = "Game Ended"; 
+    int height = 4;
+    int width = strlen(messg) + 4;
+
+    WINDOW *popup = newwin(height, width, (LINES - height) / 2, (COLS - width) / 2);
     wclear(popup);
     box(popup, 0, 0);
-    mvwprintw(popup, 1, 2, message);
+    mvwprintw(popup, 1, 2, messg);
     draw(ballX, ballY, padLY, padRY, scoreL, scoreR);
     wrefresh(popup);
-    padLY = padRY = HEIGHT / 2; // Wipe out any input that accumulated during the delay
+
+	/* gets rid of input that happens due to delay */
+    padLY = padRY = HEIGHT / 2; 
 
 	sleep(2);
     delwin(popup);
