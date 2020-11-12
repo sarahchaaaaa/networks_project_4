@@ -1,3 +1,7 @@
+/* Sarah Hwang, Wonseok Lee, Eamon Lopez 
+netpong.cpp 
+This project implements a Pong game that is played over a network between two players. */
+
 #include <ncurses.h>
 #include <stdlib.h>
 #include <pthread.h>
@@ -30,10 +34,12 @@ int padLY, padRY;
 // Player scores
 int scoreL, scoreR;
 bool endGame;
-int roundNum;
+int roundCount;
 
+/* Initialize thread */
 pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER ;
 
+/* Initialize struct for message */
 struct message {
 	int mdx;
 	int mdy;
@@ -43,11 +49,11 @@ struct message {
 	int mpadRy;
 };
 
-// Connection Information
-int connFD;
-struct sockaddr_in sin;
+/* Variables for connection */
 bool host;
-char * port;
+int connectFD;
+struct sockaddr_in sin;
+char *port;
 
 // ncurses window
 WINDOW *win;
@@ -140,7 +146,6 @@ void tock() {
     int colX = (ballX < WIDTH / 2) ? PADLX + 1 : PADRX - 1;
     if(ballX == colX && abs(ballY - padY) <= 2) {
         // Collision detected!
-    int refresh;
         dx *= -1;
         // Determine bounce angle
         if(ballY < padY) dy = -1;
@@ -156,12 +161,13 @@ void tock() {
     if(ballX == 0) {
         scoreR = (scoreR + 1) % 100;
         reset();
-		// Check For End of Round
+		/* check for round end */
 		if (scoreR == 2) {
-			scoreR = scoreL = 0;
+			scoreR = 0;
+			scoreL = 0;
 			char buff [30];
-			sprintf(buff, "ROUND %d WON -->", roundNum);
-			roundNum++;
+			sprintf(buff, "ROUND %d WON -->", roundCount);
+			roundCount++;
 			countdown(buff);
 		}
 		else
@@ -169,12 +175,13 @@ void tock() {
     } else if(ballX == WIDTH - 1) {
         scoreL = (scoreL + 1) % 100;
         reset();
-		// Check For End of Round
+		/* check for round end */
 		if (scoreL == 2) {
-			scoreL = scoreR = 0;
+			scoreR = 0;
+			scoreL = 0;
 			char buff [30];
-			sprintf(buff, "<-- ROUND %d WON", roundNum);
-			roundNum++;
+			sprintf(buff, "<-- ROUND %d WON", roundCount);
+			roundCount++;
 			countdown(buff);
 		}
 		else
@@ -188,13 +195,11 @@ void tock() {
  * Updates global pad positions
  */
 void *listenInput(void *args) {
-	
-	// Set Up Signal Listener for input thread
+
+	/* Signal for input thread */
 	struct sigaction act;
 	memset(&act, '\0', sizeof(act));
 	sigaction(SIGTERM, &act, NULL) ;
-	
-
 
     while(1) {
         switch(getch()) {
@@ -225,35 +230,32 @@ void initNcurses() {
     mvwaddch(win, HEIGHT-1, WIDTH / 2, ACS_BTEE);
 }
 
-// Receiver Handler
+/* set up receiver handler */
 void * getMessage(struct sockaddr_in * sin) {
-	char buffer[BUFSIZ];
+	char buff[BUFSIZ];
 	int addrLen = sizeof(struct sockaddr_in);
 	int byt_rec;
-	
-	if (  (byt_rec = recvfrom(connFD, buffer, sizeof(buffer), 0, (struct sockaddr *) sin, (socklen_t *)&addrLen)) == -1 ) {
-		std::cerr << "Error on recvfrom() " << strerror(errno) << std::endl;
+	if ((byt_rec = recvfrom(connectFD, buff, sizeof(buff), 0, (struct sockaddr *) sin, (socklen_t *)&addrLen)) == -1) {
+		std::cerr << "Error receiving " << strerror(errno) << std::endl;
 		std::exit(1); }
-
-	buffer[byt_rec] = '\0';
-	char * toRet = buffer;
-	return toRet;
+	buff[byt_rec] = '\0';
+	char * ret = buff;
+	return ret;
 }
 
-// Send Handler
-void sendMessage(struct sockaddr_in * sinPtr, void * toSend, int msgSiz) {
-
-
+/* set up send handler */
+void sendMessage(struct sockaddr_in * sinPtr, void * toSend, int msgSize) {
 	sin.sin_family = AF_INET ;
-
-	int retKey;
-	if	( (retKey = sendto(connFD,toSend, msgSiz, 0, (struct sockaddr *) sinPtr, sizeof(struct sockaddr_in)) ) < 0 ) {
-		std::cerr << "Error on sendto(): " << strerror(errno) << std::endl;
+	int returnKey;
+	if	((returnKey = sendto(connectFD,toSend, msgSize, 0, (struct sockaddr *) sinPtr, sizeof(struct sockaddr_in))) < 0) {
+		std::cerr << "Error sending: " << strerror(errno) << std::endl;
 		std::exit(1);
 	}
 }
 
+/* Socket information */
 int getSock(char * port) {
+	/* create struct */
 	int sockfd;
 	struct sockaddr_in sin;
 	struct addrinfo hints;
@@ -262,7 +264,7 @@ int getSock(char * port) {
 	hints.ai_socktype = SOCK_DGRAM;
 	hints.ai_flags = AI_PASSIVE;
 
-	// Get Host Info
+	/* receive host information */
 	struct addrinfo * results;
 	int status;
 	if( (status = getaddrinfo(NULL, port, &hints, &results)) != 0 ) {
@@ -270,12 +272,13 @@ int getSock(char * port) {
 		std::exit(1);
 	}
 
-	// Establish Socket and Bind
-	if ( (sockfd = socket(results->ai_family, results->ai_socktype, 0)) < 0) {
+	/* socket and bind */
+	if ((sockfd = socket(results->ai_family, results->ai_socktype, 0)) < 0) {
 		std::cerr << "Error on socket(): " << strerror(errno) << std::endl;
 	}
-	int bindRes;
-	if ( (bindRes = bind(sockfd, results->ai_addr, results->ai_addrlen) ) == -1 ) {
+
+	int bindResult;
+	if ((bindResult = bind(sockfd, results->ai_addr, results->ai_addrlen)) == -1) {
 		std::cerr << "Error on bind(): " << strerror(errno) << std::endl;
 		close(sockfd);
 		std::exit(1);
@@ -285,19 +288,16 @@ int getSock(char * port) {
 	return sockfd;
 }
 
-
-
-
+/* connection to host */
 void connectToHost(char * hostName) {
 
-	// Establish Socket (client)
+	/* create socket on client side */
 	int sockfd;
-	if ( (sockfd = socket(PF_INET, SOCK_DGRAM, 0)) < 0 ) {
-		std::cerr << "Error on Socket(): " << strerror(errno) << std::endl;
+	if ((sockfd = socket(PF_INET, SOCK_DGRAM, 0)) < 0 ) {
+		std::cerr << "Error creating socket: " << strerror(errno) << std::endl;
 	}
 
-	connFD = sockfd;
-
+	connectFD = sockfd;
 	struct addrinfo * dest;
 	struct addrinfo hints;
 	memset(&hints, 0, sizeof(hints));
@@ -305,22 +305,23 @@ void connectToHost(char * hostName) {
 	hints.ai_socktype = SOCK_DGRAM;
 	hints.ai_protocol = 0;
 
-	// Get Host Info
+	/* get host information */
 	int status;
-	if ( (status = getaddrinfo(hostName, port, &hints, &dest)) != 0) {
-		std::cerr << "Failure on getaddrinfo(): " << gai_strerror(status) << std::endl;
+	if ((status = getaddrinfo(hostName, port, &hints, &dest)) != 0) {
+		std::cerr << "Error getting address information from host: " << gai_strerror(status) << std::endl;
 		std::exit(1);
 	}
 
 	struct sockaddr_in * hostAdr = (struct sockaddr_in * ) dest->ai_addr ;
 	sin = *hostAdr;
 
-	char msg[9] = "hey" ;
+	char msg[9] = "connect" ;
 
-	// Iniatate Contact With Host
+	/* create contact with host */
 	sendMessage(&sin, (void *) msg, strlen(msg)+1) ;	
 }
 
+/* set up to listen for network */
 void * listenNetwork(void * args){
 
 	// Set Up Signal Handler For Network Thread
@@ -331,11 +332,11 @@ void * listenNetwork(void * args){
 	while (1) {
 		message msg = *((message *)getMessage(&sin));
 
-		// Check For "User Quit" Signal (when mdx = 10000)
-		if (msg.mdx == 10000) { endGame = true; }
-		// Check What Side
-		if ( host ) {
-			if ( ballX < WIDTH / 2) {
+		/* check if the game is over (when mdx = 10000) */
+		if (msg.mdx == 10000) {endGame = true;}
+		/* determine the player that initiated*/
+		if (host) {
+			if (ballX < WIDTH / 2) {
 				dx = msg.mdx;
 				dy = msg.mdy;
 				ballX = msg.mballX;
@@ -344,7 +345,7 @@ void * listenNetwork(void * args){
 			padLY = msg.mpadLy;
 		}
 		else {
-			if ( ballX > WIDTH / 2) {
+			if (ballX > WIDTH / 2) {
 				dx = msg.mdx;
 				dy = msg.mdy;
 				ballX = msg.mballX;
@@ -352,12 +353,11 @@ void * listenNetwork(void * args){
 			}
 			padRY = msg.mpadRy;
 		}
-		
 	}
-
 	return NULL;
 }
 
+/* handles endgame */
 void handler(int signal) {
 
 	// Set endGame to true and notify user to do the same
@@ -368,6 +368,7 @@ void handler(int signal) {
 }
 
 int main(int argc, char *argv[]) {
+	/* initialize variables */
 	endGame = false;
 	char * hostPort;
 	char * hostName;
@@ -378,11 +379,11 @@ int main(int argc, char *argv[]) {
 	signal(SIGINT, handler);
 
 	hostPort = argv[2];
-	if ( !strcmp(argv[1], "--host") ){
+	if (!strcmp(argv[1], "--host") ){
 		freopen("servLog.txt", "w", stderr);
-		connFD = getSock(hostPort);
+		connectFD = getSock(hostPort);
 		
-		// Establish Difficulty
+		/* prompt difficulty */
 		char difficulty[10]; 
 		printf("Please select the difficulty level (easy, medium or hard): ");
 		scanf("%s", &difficulty);
@@ -390,13 +391,13 @@ int main(int argc, char *argv[]) {
 		else if(strcmp(difficulty, "medium") == 0) refresh = 40000;
 		else if(strcmp(difficulty, "hard") == 0) refresh = 20000;
 
-		// Get Max Rounds
+		/* prompt number of rounds */
 		std::cout << "Enter maximum rounds to play: " ;
 		scanf("%d", &maxRounds);
 
 		std::cout << "Waiting For Connections on Port " << hostPort << std::endl;
 
-		// Connect to an opponent
+		/* connect to opponent */
 		char * buf = (char *) getMessage(&sin);
 		host = true;
 	}else{
@@ -412,17 +413,17 @@ int main(int argc, char *argv[]) {
 	std::cerr << "My Host Value is: " << host << std::endl;
 
 	if (host == false) {
-		// Get Refresh Rate and maxRounds Number
+		/* Get Refresh Rate and maxRounds Number */
 		refresh = *((int *) getMessage(&sin)) ;
 		maxRounds = *((int *) getMessage(&sin)) ;
 	}
 	else {
-		// Send Refresh Rate and maxRounds Number
+		/* Send Refresh Rate and maxRounds Number */
 		sendMessage(&sin, (void *) &refresh, sizeof(int)) ;
 		sendMessage(&sin, (void *) &maxRounds, sizeof(int)) ;
 	}
 
-	roundNum = 1;
+	roundCount = 1;
 	// --------------------//
     // Process args
     // refresh is clock rate in microseconds
@@ -439,17 +440,16 @@ int main(int argc, char *argv[]) {
     pthread_t pth;
     pthread_create(&pth, NULL, listenInput, NULL);
 
-	// Listen To Network Traffic :)
+	/* listen to network */
 	pthread_t pth0;
 	pthread_create(&pth0, NULL, listenNetwork, NULL);
 
     // Main game loop executes tock() method every REFRESH microseconds
     struct timeval tv;
-    while(roundNum <= maxRounds && !endGame) {
+    while(roundCount <= maxRounds && !endGame) {
         gettimeofday(&tv,NULL);
         unsigned long before = 1000000 * tv.tv_sec + tv.tv_usec;
-
-		// Send Paddle and Ball Data
+		/* send game information */
 		struct message M;
 		M.mdx = dx;
 		M.mdy = dy;
@@ -458,7 +458,6 @@ int main(int argc, char *argv[]) {
 		M.mballX = ballX;
 		M.mballY = ballY;
 		sendMessage(&sin, (void *) &M, sizeof(struct message));
-
 
         tock(); // Update game state
         gettimeofday(&tv,NULL);
@@ -486,14 +485,12 @@ int main(int argc, char *argv[]) {
     delwin(popup);
     endwin();
 
-	// KIll Threads
+	/* kill threads */
 	std::system("clear");
 	pthread_kill(pth, SIGTERM);
 	pthread_kill(pth0, SIGTERM);
     // Clean up
     pthread_join(pth, NULL);
 	pthread_join(pth0, NULL);
-
-
     return 0;
 }
