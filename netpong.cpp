@@ -41,16 +41,16 @@ pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER ;
 
 /* Initialize struct for message */
 struct message {
-	int mdx;
-	int mdy;
-	int mballX;
-	int mballY;
-	int mpadLy;
-	int mpadRy;
+	int dx;
+	int dy;
+	int ballX;
+	int ballY;
+	int padLY;
+	int padRY;
 };
 
 /* Variables for connection */
-bool host;
+bool isHost;
 int connectFD;
 struct sockaddr_in sin;
 char *port;
@@ -203,18 +203,67 @@ void *listenInput(void *args) {
 
     while(1) {
         switch(getch()) {
-            case KEY_UP: if (host) padRY--;
+            case KEY_UP: if (isHost) padRY--;
              break;
-            case KEY_DOWN: if (host) padRY++;
+            case KEY_DOWN: if (isHost) padRY++;
              break;
-            case 'w': if (!host) padLY--;
+            case 'w': if (!isHost) padLY--;
              break;
-            case 's': if (!host) padLY++;
+            case 's': if (!isHost) padLY++;
              break;
             default: break;
        }
     }       
     return NULL;
+}
+
+/* set up receiver handler */
+void *getMessage(struct sockaddr_in * sin) {
+	char buff[BUFSIZ];
+	int addrLen = sizeof(struct sockaddr_in);
+	int byt_rec;
+	if ((byt_rec = recvfrom(connectFD, buff, sizeof(buff), 0, (struct sockaddr *) sin, (socklen_t *)&addrLen)) == -1) {
+		std::cerr << "Error receiving " << strerror(errno) << std::endl;
+		std::exit(1); }
+	buff[byt_rec] = '\0';
+	char * ret = buff;
+	return ret;
+}
+
+/* set up to listen for network */
+void *listenNet(void * args){
+
+	/* sig handler */
+	struct sigaction act;
+	memset(&act, '\0', sizeof(act));
+	sigaction(SIGTERM, &act, NULL) ;
+
+	while (1) {
+		message msg = *((message*)getMessage(&sin));
+
+		/* check if the game is over (when dx = 10000) */
+		if (msg.dx == 10000) {endGame = true;}
+		/* determine the player that initiated*/
+		if (isHost){
+			if (ballX < WIDTH / 2) {
+				dx = msg.dx;
+				dy = msg.dy;
+				ballX = msg.ballX;
+				ballY = msg.ballY;
+			}
+			padLY = msg.padLY;
+		}
+		else{
+			if (ballX > WIDTH / 2) {
+				dx = msg.dx;
+				dy = msg.dy;
+				ballX = msg.ballX;
+				ballY = msg.ballY;
+			}
+			padRY = msg.padRY;
+		}
+	}
+	return NULL;
 }
 
 void initNcurses() {
@@ -230,19 +279,6 @@ void initNcurses() {
     mvwaddch(win, HEIGHT-1, WIDTH / 2, ACS_BTEE);
 }
 
-/* set up receiver handler */
-void * getMessage(struct sockaddr_in * sin) {
-	char buff[BUFSIZ];
-	int addrLen = sizeof(struct sockaddr_in);
-	int byt_rec;
-	if ((byt_rec = recvfrom(connectFD, buff, sizeof(buff), 0, (struct sockaddr *) sin, (socklen_t *)&addrLen)) == -1) {
-		std::cerr << "Error receiving " << strerror(errno) << std::endl;
-		std::exit(1); }
-	buff[byt_rec] = '\0';
-	char * ret = buff;
-	return ret;
-}
-
 /* set up send handler */
 void sendMessage(struct sockaddr_in * sinPtr, void * toSend, int msgSize) {
 	sin.sin_family = AF_INET ;
@@ -254,7 +290,7 @@ void sendMessage(struct sockaddr_in * sinPtr, void * toSend, int msgSize) {
 }
 
 /* Socket information */
-int getSock(char * port) {
+int getSocket(char * port) {
 	/* create struct */
 	int sockfd;
 	struct sockaddr_in sin;
@@ -316,64 +352,25 @@ void connectToHost(char * hostName) {
 	sin = *hostAdr;
 
 	char msg[9] = "connect" ;
-
 	/* create contact with host */
 	sendMessage(&sin, (void *) msg, strlen(msg)+1) ;	
 }
 
-/* set up to listen for network */
-void * listenNetwork(void * args){
-
-	// Set Up Signal Handler For Network Thread
-	struct sigaction act;
-	memset(&act, '\0', sizeof(act));
-	sigaction(SIGTERM, &act, NULL) ;
-
-	while (1) {
-		message msg = *((message *)getMessage(&sin));
-
-		/* check if the game is over (when mdx = 10000) */
-		if (msg.mdx == 10000) {endGame = true;}
-		/* determine the player that initiated*/
-		if (host) {
-			if (ballX < WIDTH / 2) {
-				dx = msg.mdx;
-				dy = msg.mdy;
-				ballX = msg.mballX;
-				ballY = msg.mballY;
-			}
-			padLY = msg.mpadLy;
-		}
-		else {
-			if (ballX > WIDTH / 2) {
-				dx = msg.mdx;
-				dy = msg.mdy;
-				ballX = msg.mballX;
-				ballY = msg.mballY;
-			}
-			padRY = msg.mpadRy;
-		}
-	}
-	return NULL;
-}
-
 /* handles endgame */
 void handler(int signal) {
-
-	// Set endGame to true and notify user to do the same
 	endGame = true;
 	struct message M;
-	M.mdx = 10000;
+	M.dx = 10000;
 	sendMessage(&sin, (void *)&M, sizeof(struct message));
 }
 
 int main(int argc, char *argv[]) {
 	/* initialize variables */
 	endGame = false;
-	char * hostPort;
-	char * hostName;
+	char *hostPort;
+	char *hostName;
 	int refresh;
-	int maxRounds;
+	int numRounds;
 
 	signal(SIGINT, handler);
 	if (argc != 3){
@@ -383,9 +380,8 @@ int main(int argc, char *argv[]) {
 
 	hostPort = argv[2];
 	if (!strcmp(argv[1], "--host") ){
-		freopen("servLog.txt", "w", stderr);
-		connectFD = getSock(hostPort);
-		
+		connectFD = getSocket(hostPort);
+	
 		/* prompt difficulty */
 		char difficulty[10]; 
 		printf("Please select the difficulty level (easy, medium or hard): ");
@@ -393,37 +389,38 @@ int main(int argc, char *argv[]) {
 		if(strcmp(difficulty, "easy") == 0) refresh = 80000;
 		else if(strcmp(difficulty, "medium") == 0) refresh = 40000;
 		else if(strcmp(difficulty, "hard") == 0) refresh = 20000;
+		else{
+			printf("Please enter a valid difficulty level, terminating... \n");
+			return 0;
+		}
 
 		/* prompt number of rounds */
-		std::cout << "Enter maximum rounds to play: " ;
-		scanf("%d", &maxRounds);
+		std::cout << "Please enter the maximum number of rounds to play: ";
+		scanf("%d", &numRounds);
 
-		std::cout << "Waiting For Connections on Port " << hostPort << std::endl;
+		std::cout << "Waiting for connections on port: " << hostPort << std::endl;
 
 		/* connect to opponent */
 		char * buf = (char *) getMessage(&sin);
-		host = true;
+		isHost = true;
 	}else{
-		freopen("cliLog.txt", "w", stderr);
-		std::cerr << "GUEST!" << std::endl;
-		host = false;
+		hostName = argv[1];
+		std::cout << "Connecting to " << hostName << " on port: " << hostPort << std::endl;
+		isHost = false;
 		port = hostPort;
 		sin.sin_port = htons(atoi(port));
-		hostName = argv[1];
 		connectToHost(hostName);
 	}
 
-	std::cerr << "My Host Value is: " << host << std::endl;
-
-	if (host == false) {
-		/* Get Refresh Rate and maxRounds Number */
+	if (isHost == false) {
+		/* Get Refresh Rate and numRounds Number */
 		refresh = *((int *) getMessage(&sin)) ;
-		maxRounds = *((int *) getMessage(&sin)) ;
+		numRounds = *((int *) getMessage(&sin)) ;
 	}
 	else {
-		/* Send Refresh Rate and maxRounds Number */
+		/* Send Refresh Rate and numRounds Number */
 		sendMessage(&sin, (void *) &refresh, sizeof(int)) ;
-		sendMessage(&sin, (void *) &maxRounds, sizeof(int)) ;
+		sendMessage(&sin, (void *) &numRounds, sizeof(int)) ;
 	}
 
 	roundCount = 1;
@@ -445,21 +442,21 @@ int main(int argc, char *argv[]) {
 
 	/* listen to network */
 	pthread_t pth0;
-	pthread_create(&pth0, NULL, listenNetwork, NULL);
+	pthread_create(&pth0, NULL, listenNet, NULL);
 
     // Main game loop executes tock() method every REFRESH microseconds
     struct timeval tv;
-    while(roundCount <= maxRounds && !endGame) {
+    while(roundCount <= numRounds && !endGame) {
         gettimeofday(&tv,NULL);
         unsigned long before = 1000000 * tv.tv_sec + tv.tv_usec;
 		/* send game information */
 		struct message M;
-		M.mdx = dx;
-		M.mdy = dy;
-		M.mpadLy = padLY;
-		M.mpadRy = padRY;
-		M.mballX = ballX;
-		M.mballY = ballY;
+		M.dx = dx;
+		M.dy = dy;
+		M.padLY = padLY;
+		M.padRY = padRY;
+		M.ballX = ballX;
+		M.ballY = ballY;
 		sendMessage(&sin, (void *) &M, sizeof(struct message));
 
         tock(); // Update game state
@@ -492,9 +489,9 @@ int main(int argc, char *argv[]) {
     endwin();
 
 	/* kill threads */
-	std::system("clear");
 	pthread_kill(pth, SIGTERM);
 	pthread_kill(pth0, SIGTERM);
+
     // Clean up
     pthread_join(pth, NULL);
 	pthread_join(pth0, NULL);
